@@ -1,0 +1,65 @@
+name: Build TS Studio APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Test XML engine
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m unittest discover -s tests -v
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Restore stable signing key when configured
+        if: github.event_name != 'pull_request'
+        env:
+          SIGNING_KEY: ${{ secrets.TSSTUDIO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$SIGNING_KEY" ]; then
+            mkdir -p "$HOME/.android"
+            printf '%s' "$SIGNING_KEY" | base64 --decode > "$HOME/.android/debug.keystore"
+          fi
+      - name: Build APK
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:lintDebug
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/TS-Studio-2.0-Android.apk
+          cd dist
+          sha256sum TS-Studio-2.0-Android.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TS-Studio-2.0-Android
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
