@@ -15,6 +15,12 @@ def fixture():
  'AndroidTestObjects':b'<AndroidTestObjects><Object v="'+B.xml_escape_attribute(json.dumps({'storeId':'citymarket','slotsCount':8})).encode()+b'"/><Object v="'+B.xml_escape_attribute(json.dumps({'storeId':'bagfactory','slotsCount':3,'keep':42})).encode()+b'"/></AndroidTestObjects>'}
  for name,block in blocks.items():game=B._clone_upsert_root_block(game,name,block)
  return B.encode_save(game,pair[0]),B.encode_save(local,pair[1])
+class Launcher(unittest.TestCase):
+ def test_uses_android_activity_manager_instead_of_monkey(self):
+  original=E.root_shell;calls=[];E.root_shell=lambda command,timeout=45:calls.append(command) or b'Starting activity'
+  try:E.launch_game()
+  finally:E.root_shell=original
+  self.assertEqual(calls,["am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p 'com.playrix.township.vn'"])
 class Editors(unittest.TestCase):
  @classmethod
  def setUpClass(cls):cls.pair=fixture()
@@ -37,6 +43,12 @@ class Editors(unittest.TestCase):
  def test_barn_decoration_quantities(self):
   old=B._advanced_read(B.SESSION.current_xml,'Glass');E.edit('barn',{'level':20,'values':{'Brick':123}});self.assertEqual(B._advanced_read(B.SESSION.current_xml,'Glass'),old);self.assertEqual(B._advanced_read(B.SESSION.current_xml,'Brick'),'123')
   E.edit('decoration',{'values':{'ExpeditionDecoration46':1}});E.edit('quantities',{'values':{'m3Bomb':17}});self.assertEqual(B._advanced_read(B.SESSION.current_xml,B.TSVIP_QUANTITIES['m3Bomb'][0]),'17')
+ def test_decoration_quantity_cap_is_100(self):
+  item='Apple_Garden';before=E.snapshot();E.edit('decoration',{'values':{item:100}})
+  self.assertEqual(B.decoration_inventory(B.SESSION.current_xml)[item],100)
+  before_invalid=E.snapshot()
+  with self.assertRaises(B.SaveToolError):E.edit('decoration',{'values':{item:101}})
+  self.assertEqual(E.snapshot(),before_invalid)
  def test_unlock_states_roundtrip(self):
   for state in (True,False):E.edit('avatar',{'values':{'398':state}});self.assertEqual(B.avatar_states(B.SESSION.current_xml)['398']['state'],state)
   for k,cat in [('skin',B.TSVIP_SKINS),('stickers',B.TSVIP_STICKERS),('profile',B.TSVIP_PROFILE),('achievements',{'Achievements':B.TSVIP_ACHIEVEMENTS})]:

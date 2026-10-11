@@ -42,7 +42,10 @@ def root_shell(command,timeout=45):
  if p.returncode:raise B.SaveToolError('Root operation failed: '+p.stderr.decode('utf-8','replace')[:500])
  return p.stdout
 def stop_game():root_shell('am force-stop '+q(B.PACKAGE_NAME))
-def launch_game():root_shell('monkey -p '+q(B.PACKAGE_NAME)+' -c android.intent.category.LAUNCHER 1')
+def launch_game():root_shell('am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p '+q(B.PACKAGE_NAME))
+def launch_after_commit():
+ try:launch_game()
+ except Exception as err:log('Both XML files were written and verified, but Township could not be launched automatically: '+str(err),'warning')
 def read_remote(path):
  size=int(root_shell('stat -c %s '+q(path)).strip())
  if not 0<size<=B.MAX_CONTAINER_SIZE:raise B.SaveToolError('Save size outside supported range')
@@ -165,7 +168,7 @@ def describe(kind):
   return {'mode':'states','rows':rows}
  if kind=='decoration':
   inv=B.decoration_inventory(xml)
-  for g,ids in B.DECORATION_GROUPS.items():rows += [row(k,value=inv.get(k,0),group=g,min=0,max=20) for k in ids]
+  for g,ids in B.DECORATION_GROUPS.items():rows += [row(k,value=inv.get(k,0),group=g,min=0,max=100) for k in ids]
  elif kind=='barn':
   for g,ids in D.barn_groups(B.TSVIP_BARN_PRODUCTS).items():rows += [row(k,value=int(B._advanced_read(xml,B.barn_product_field(k)) or 0),group=g) for k in ids]
   return {'mode':'values','rows':rows,'level':int(B._advanced_read(xml,'WareHouseCashUpgrade') or 0)}
@@ -332,7 +335,7 @@ def request(action,payload='{}'):
    require();source=donor(args);available,reasons=D.gui_design_availability(source,B.SESSION.current_xml);result=dict(account=D.gui_design_metadata(source),available=available,reasons=reasons)
   elif action=='apply':
    require();write_pair(encoded_pair(),BASELINE)
-   if CONFIG['launch']:launch_game()
+   if CONFIG['launch']:launch_after_commit()
    result=state()
   elif action=='undo':
    require()
@@ -351,7 +354,7 @@ def request(action,payload='{}'):
    require();pair=B.read_account_backup(safe_input(args['path']))[:2];backup_pair(encoded_pair(),'before History edits')
    if args.get('write'):
     stop_game();commit_pair(*read_pair());write_pair(pair,BASELINE)
-    if CONFIG['launch']:launch_game()
+    if CONFIG['launch']:launch_after_commit()
    else:gx,lx=validate_pair(*pair);stage(gx,lx,pair)
    result=state()
   elif action=='codec':

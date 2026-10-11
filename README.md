@@ -1,4 +1,4 @@
-# TS Studio Android 2.0
+# TS Studio Android 2.01
 
 Ứng dụng Android root, dựa trên TS Studio Python v1.39 của người dùng. Backend XML gốc được trích xuất nguyên vẹn, giao diện Android mới dùng WebView nội bộ và Chaquopy. Không cần máy tính/ADB để sử dụng.
 

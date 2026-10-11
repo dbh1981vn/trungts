@@ -135,12 +135,24 @@ def gui_set_decoration_quantities(xml,quantities):
     """Reuse the original fragment/sign handling for positive quantities, verify zeros separately."""
     known=set().union(*B.DECORATION_GROUPS.values())
     if not quantities or not set(quantities)<=known:raise B.SaveToolError('Danh sách Decoration không hợp lệ.')
-    if any(type(value) is not int or not 0<=value<=20 for value in quantities.values()):raise B.SaveToolError('Số lượng Decoration phải từ 0 đến 20.')
+    if any(type(value) is not int or not 0<=value<=100 for value in quantities.values()):raise B.SaveToolError('Số lượng Decoration phải từ 0 đến 100.')
     quantities={key:1 if key in B.DECORATION_GROUPS['sign'] else value for key,value in quantities.items()}
     original=B.decoration_inventory(xml);updated=xml;reports=[]
     for quantity in sorted(set(quantities.values())-{0}):
         selected=[key for key,value in quantities.items() if value==quantity]
-        updated,report=B.set_decorations(updated,selected,quantity);reports.append(report)
+        # Preserve the original template/fragment writer, then raise only the
+        # selected stash counts above its legacy 20-item limit.
+        updated,report=B.set_decorations(updated,selected,min(quantity,20))
+        if quantity>20:
+            match=B._decor_block(updated,'BuildingsStash')
+            if not match:raise B.SaveToolError('Không tìm thấy BuildingsStash sau khi tạo Decoration.')
+            stash=match.group(0);selected_set=set(selected)
+            def high_count(item):
+                key=B.html.unescape(B.parse_attributes(item.group(0)).get('id',''))
+                return B.replace_attribute(item.group(0),'count',str(quantity)) if key in selected_set else item.group(0)
+            stash=re.sub(rb'<Building\b[^>]*>',high_count,stash)
+            updated=B._decor_replace_block(updated,'BuildingsStash',stash)
+        report['count']=quantity;reports.append(report)
     zero_ids={key for key,value in quantities.items() if value==0}
     if zero_ids:
         match=B._decor_block(updated,'BuildingsStash')
