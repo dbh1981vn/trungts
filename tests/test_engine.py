@@ -1,4 +1,4 @@
-import unittest,sys,tempfile,base64,json,copy,subprocess,zipfile,io,re
+import unittest,sys,tempfile,base64,json,copy,subprocess,zipfile,io,re,shlex
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app/src/main/python'))
 import android_engine as E
@@ -20,7 +20,8 @@ class Launcher(unittest.TestCase):
   original=E.root_shell;calls=[];E.root_shell=lambda command,timeout=45:calls.append(command) or b'Starting activity'
   try:E.launch_game()
   finally:E.root_shell=original
-  self.assertEqual(calls,["am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p 'com.playrix.township.vn'"])
+  self.assertEqual(len(calls),1)
+  self.assertEqual(shlex.split(calls[0]),['am','start','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-p','com.playrix.township.vn'])
 class Editors(unittest.TestCase):
  @classmethod
  def setUpClass(cls):cls.pair=fixture()
