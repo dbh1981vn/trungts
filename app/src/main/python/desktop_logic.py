@@ -688,3 +688,21 @@ B.DECORATION_GROUPS={k:tuple(v) for k,v in B.DECORATION_GROUPS.items()}
 B.DECORATION_GROUPS['special']+=tuple(k for k in CONFIRMED_DECORATION_FRAGMENTS if k not in B.DECORATION_GROUPS['special'])
 
 B.DECORATION_FRAGMENTS=dict(B.DECORATION_FRAGMENTS,**CONFIRMED_DECORATION_FRAGMENTS)
+
+# Extend Android editor catalogs with IDs verified in the supplied XML exports.
+from catalog_extensions import (EXTRA_SKINS, EXTRA_PROFILE, EXTRA_DECORATION_FRAGMENTS,
+                                EXTRA_DECORATIONS, EXTRA_SIGNS)
+B.TSVIP_SKINS={group:tuple(dict.fromkeys((*ids,*EXTRA_SKINS.get(group,()))))
+               for group,ids in B.TSVIP_SKINS.items()}
+B.TSVIP_PROFILE={group:tuple(dict.fromkeys((*ids,*EXTRA_PROFILE.get(group,()))))
+                 for group,ids in B.TSVIP_PROFILE.items()}
+B.PROFILE_ITEM_LABELS=dict(B.PROFILE_ITEM_LABELS)
+for _field,_label in (('UnlockedBadges','Badge'),('UnlockedExpRanks','Rank'),('UnlockedFrames','Frame')):
+    _old_count=len(B.PROFILE_ITEM_LABELS.get(_field,()))
+    _extra_count=len(EXTRA_PROFILE.get(_field,()))
+    if _extra_count:
+        B.PROFILE_ITEM_LABELS[_field]=tuple(B.PROFILE_ITEM_LABELS.get(_field,()))+tuple(
+            f'{_label} {_i}' for _i in range(_old_count+1,_old_count+_extra_count+1))
+B.DECORATION_GROUPS['special']=tuple(dict.fromkeys((*B.DECORATION_GROUPS['special'],*EXTRA_DECORATIONS)))
+B.DECORATION_GROUPS['sign']=tuple(dict.fromkeys((*B.DECORATION_GROUPS['sign'],*EXTRA_SIGNS)))
+B.DECORATION_FRAGMENTS=dict(B.DECORATION_FRAGMENTS,**EXTRA_DECORATION_FRAGMENTS)

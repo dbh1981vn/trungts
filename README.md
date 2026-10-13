@@ -1,4 +1,4 @@
-# TS Studio Android 2.01
+# TS Studio Android 2.0
 
 Ứng dụng Android root, dựa trên TS Studio Python v1.39 của người dùng. Backend XML gốc được trích xuất nguyên vẹn, giao diện Android mới dùng WebView nội bộ và Chaquopy. Không cần máy tính/ADB để sử dụng.
 
@@ -37,6 +37,7 @@ Build sử dụng JDK 17, Gradle 8.9, AGP 8.7.3, Chaquopy 16.1.0, Python 3.11, S
 
 - `app/src/main/python/township_core.py`: engine gốc, không thay thuật toán.
 - `desktop_logic.py`: các hàm editor không phụ thuộc Qt trích từ v1.39.
+- `catalog_extensions.py`: IDs Skin/Profile/Decoration bổ sung được kiểm chứng từ các XML catalog đã cung cấp; các avatar hiện có trong GlobalCatalog được đọc trực tiếp khi Connect.
 - `android_engine.py`: phiên làm việc, root, backup, transaction và JSON API.
 - `MainActivity.java`: Android host, SAF, luồng nền, WebView chỉ cho phép assets nội bộ.
 - `app/src/main/assets`: giao diện responsive và bảng dịch.

@@ -50,6 +50,16 @@ class Editors(unittest.TestCase):
   before_invalid=E.snapshot()
   with self.assertRaises(B.SaveToolError):E.edit('decoration',{'values':{item:101}})
   self.assertEqual(E.snapshot(),before_invalid)
+ def test_xml_catalog_extensions(self):
+  skin='Skin_Train_future_76';E.edit('skin',{'values':{'Train':{skin:True}}})
+  self.assertTrue(B.unlock_catalog_states(B.SESSION.current_xml,'skin','Train',[skin])[skin])
+  for item in ('ExpeditionDecoration54','Merge2Decoration19'):
+   E.edit('decoration',{'values':{item:2}})
+   self.assertEqual(B.decoration_inventory(B.SESSION.current_xml)[item],2)
+  self.assertIn('Skin_Cow_birthday2026',B.TSVIP_SKINS['Cow'])
+  self.assertNotIn('Skin_TrainStation_lunarN',B.TSVIP_SKINS['TrainStation'])
+  self.assertIn('DSoGUBNqXn8yEANUPic+FQhRUVwlEFs5JVUZKysUAD4=',B.TSVIP_PROFILE['UnlockedBadges'])
+  self.assertGreater(len(B.TSVIP_PROFILE['UnlockedStyles']),7)
  def test_unlock_states_roundtrip(self):
   for state in (True,False):E.edit('avatar',{'values':{'398':state}});self.assertEqual(B.avatar_states(B.SESSION.current_xml)['398']['state'],state)
   for k,cat in [('skin',B.TSVIP_SKINS),('stickers',B.TSVIP_STICKERS),('profile',B.TSVIP_PROFILE),('achievements',{'Achievements':B.TSVIP_ACHIEVEMENTS})]:

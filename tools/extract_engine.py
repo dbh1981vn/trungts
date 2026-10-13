@@ -6,7 +6,18 @@ constants=set('THEME_FIELDS THEMES PROFILE LANGUAGES ACADEMY_FIELDS ACADEMY_NAME
 parts=['# Pure logic extracted from TS Studio v1.39. No Qt dependency.','import re,json,base64,zlib,os,uuid','from pathlib import Path','from datetime import datetime','from functools import lru_cache','import township_core as B']
 for n in tree.body:
  if (isinstance(n,ast.FunctionDef) and n.name in functions) or (isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id in constants for x in n.targets)):parts.append(ast.get_source_segment(s,n))
-parts += ["B.DECORATION_GROUPS={k:tuple(v) for k,v in B.DECORATION_GROUPS.items()}","B.DECORATION_GROUPS['special']+=tuple(k for k in CONFIRMED_DECORATION_FRAGMENTS if k not in B.DECORATION_GROUPS['special'])","B.DECORATION_FRAGMENTS=dict(B.DECORATION_FRAGMENTS,**CONFIRMED_DECORATION_FRAGMENTS)"]
+parts += ["B.DECORATION_GROUPS={k:tuple(v) for k,v in B.DECORATION_GROUPS.items()}","B.DECORATION_GROUPS['special']+=tuple(k for k in CONFIRMED_DECORATION_FRAGMENTS if k not in B.DECORATION_GROUPS['special'])","B.DECORATION_FRAGMENTS=dict(B.DECORATION_FRAGMENTS,**CONFIRMED_DECORATION_FRAGMENTS)",'''# Android catalogs extended from verified exported XML components.
+from catalog_extensions import (EXTRA_SKINS, EXTRA_PROFILE, EXTRA_DECORATION_FRAGMENTS,
+                                EXTRA_DECORATIONS, EXTRA_SIGNS)
+B.TSVIP_SKINS={group:tuple(dict.fromkeys((*ids,*EXTRA_SKINS.get(group,())))) for group,ids in B.TSVIP_SKINS.items()}
+B.TSVIP_PROFILE={group:tuple(dict.fromkeys((*ids,*EXTRA_PROFILE.get(group,())))) for group,ids in B.TSVIP_PROFILE.items()}
+B.PROFILE_ITEM_LABELS=dict(B.PROFILE_ITEM_LABELS)
+for _field,_label in (('UnlockedBadges','Badge'),('UnlockedExpRanks','Rank'),('UnlockedFrames','Frame')):
+    _old_count=len(B.PROFILE_ITEM_LABELS.get(_field,()));_extra_count=len(EXTRA_PROFILE.get(_field,()))
+    if _extra_count:B.PROFILE_ITEM_LABELS[_field]=tuple(B.PROFILE_ITEM_LABELS.get(_field,()))+tuple(f'{_label} {_i}' for _i in range(_old_count+1,_old_count+_extra_count+1))
+B.DECORATION_GROUPS['special']=tuple(dict.fromkeys((*B.DECORATION_GROUPS['special'],*EXTRA_DECORATIONS)))
+B.DECORATION_GROUPS['sign']=tuple(dict.fromkeys((*B.DECORATION_GROUPS['sign'],*EXTRA_SIGNS)))
+B.DECORATION_FRAGMENTS=dict(B.DECORATION_FRAGMENTS,**EXTRA_DECORATION_FRAGMENTS)''']
 (out/'desktop_logic.py').write_text('\n\n'.join(parts));cat={};codes=ast.literal_eval(a['I18N_CODES'].value)
 for line in ast.literal_eval(a['I18N_DATA'].value).strip().splitlines():
  p=line.split('|');v=dict(zip(codes,p[1:]));v['vi']=p[0];cat[p[0]]=v;cat[v['en']]=v
