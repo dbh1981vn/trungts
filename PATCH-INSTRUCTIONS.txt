@@ -1,5 +1,5 @@
-TS Studio Android — Connect summary patch
+TS Studio Android — Auto-launch fix
 
-Giải nén gói này vào thư mục gốc repository Android, cho phép ghi đè các file cùng đường dẫn. Sau đó push lên GitHub và chạy workflow Build TS Studio APK.
+Giải nén gói này vào thư mục gốc repository Android, cho phép ghi đè các file cùng đường dẫn. Push lên GitHub và chạy workflow Build TS Studio APK.
 
-Bản vá này chỉ cập nhật mã Android; không chỉnh sửa file Python desktop gốc.
+Bản vá giữ nguyên bước dừng game, ghi hai file XML và xác minh readback. Sau khi Apply thành công, ứng dụng gọi Android PackageManager để mở đúng package đang cấu hình.

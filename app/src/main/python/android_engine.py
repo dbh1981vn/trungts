@@ -42,7 +42,9 @@ def root_shell(command,timeout=45):
  if p.returncode:raise B.SaveToolError('Root operation failed: '+p.stderr.decode('utf-8','replace')[:500])
  return p.stdout
 def stop_game():root_shell('am force-stop '+q(B.PACKAGE_NAME))
-def launch_game():root_shell('am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p '+q(B.PACKAGE_NAME))
+def launch_game():
+ if EVENT:EVENT(json.dumps({'event':'launch','package':B.PACKAGE_NAME}))
+ else:root_shell('am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p '+q(B.PACKAGE_NAME))
 def launch_after_commit():
  try:launch_game()
  except Exception as err:log('Both XML files were written and verified, but Township could not be launched automatically: '+str(err),'warning')

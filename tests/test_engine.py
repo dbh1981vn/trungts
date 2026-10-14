@@ -16,6 +16,18 @@ def fixture():
  for name,block in blocks.items():game=B._clone_upsert_root_block(game,name,block)
  return B.encode_save(game,pair[0]),B.encode_save(local,pair[1])
 class Launcher(unittest.TestCase):
+ def test_launch_uses_native_package_manager_event_when_bridge_exists(self):
+  original_event,original_shell,original_package=E.EVENT,E.root_shell,B.PACKAGE_NAME
+  events=[];calls=[];E.EVENT=events.append;E.root_shell=lambda *a,**k:calls.append(a) or b'';B.PACKAGE_NAME='com.playrix.township.vn'
+  try:E.launch_game()
+  finally:E.EVENT=original_event;E.root_shell=original_shell;B.PACKAGE_NAME=original_package
+  self.assertEqual(calls,[]);self.assertEqual(json.loads(events[0]),{'event':'launch','package':'com.playrix.township.vn'})
+ def test_apply_autolaunches_only_after_write_succeeds(self):
+  original=(E.CONFIG,E.CONNECTED,E.EVENT,E.write_pair,E.encoded_pair,E.state,E.BASELINE,B.PACKAGE_NAME)
+  events=[];E.CONFIG={'package':'com.playrix.township.vn','launch':True};E.CONNECTED=True;E.EVENT=events.append;E.write_pair=lambda pair,expected:None;E.encoded_pair=lambda:(b'game',b'local');E.state=lambda:{'connected':True};E.BASELINE=('baseline-game','baseline-local');B.PACKAGE_NAME='com.playrix.township.vn'
+  try:result=json.loads(E.request('apply'))
+  finally:E.CONFIG,E.CONNECTED,E.EVENT,E.write_pair,E.encoded_pair,E.state,E.BASELINE,B.PACKAGE_NAME=original
+  self.assertTrue(result['ok'],result);self.assertEqual(json.loads(events[-1]),{'event':'launch','package':'com.playrix.township.vn'})
  def test_uses_android_activity_manager_instead_of_monkey(self):
   original=E.root_shell;calls=[];E.root_shell=lambda command,timeout=45:calls.append(command) or b'Starting activity'
   try:E.launch_game()

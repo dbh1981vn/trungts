@@ -36,9 +36,21 @@ public class MainActivity extends Activity {
  private void reply(String id,boolean ok,Object data){try{emit(new JSONObject().put("id",id).put("ok",ok).put(ok?"data":"error",data).toString());}catch(JSONException ignored){}}
  public class Events {
   public void emit(String raw){
-   try{JSONObject o=new JSONObject(raw);if(o.optString("event").equals("backup")){String path=o.getString("path"),name=o.getString("name");files.execute(()->mirrorBackup(path,name));}}catch(Exception ignored){}
+   try{
+    JSONObject o=new JSONObject(raw);String event=o.optString("event");
+    if(event.equals("backup")){String path=o.getString("path"),name=o.getString("name");files.execute(()->mirrorBackup(path,name));}
+    else if(event.equals("launch")){String packageName=o.getString("package");runOnUiThread(()->launchPackage(packageName));return;}
+   }catch(Exception ignored){}
    MainActivity.this.emit(raw);
   }
+ }
+ private void launchPackage(String packageName){
+  try{
+   Intent intent=getPackageManager().getLaunchIntentForPackage(packageName);
+   if(intent==null){message("Save was written, but Android could not find a launcher activity for "+packageName,"warning");return;}
+   intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+   startActivity(intent);message("Township launched: "+packageName,"info");
+  }catch(Exception e){message("Save was written, but Township could not be launched: "+e.getMessage(),"warning");}
  }
  public class Bridge {
   @JavascriptInterface public void call(String action,String payload,String id){
