@@ -1,5 +1,5 @@
-TS Studio Android — Compact UI patch
+TS Studio Android — Connect summary patch
 
 Giải nén gói này vào thư mục gốc repository Android, cho phép ghi đè các file cùng đường dẫn. Sau đó push lên GitHub và chạy workflow Build TS Studio APK.
 
-Không thay đổi file Python desktop gốc.
+Bản vá này chỉ cập nhật mã Android; không chỉnh sửa file Python desktop gốc.

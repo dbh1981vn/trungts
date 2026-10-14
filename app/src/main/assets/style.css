@@ -18,3 +18,15 @@ button,input,select{font-size:12px}button{min-height:38px;padding:6px 10px;borde
 .toolbar{top:0;padding:6px 0}.toolbar input[type=search]{margin-bottom:5px}.toolbar button{min-height:32px;padding:4px 8px}.rows{gap:4px}.editrow{min-height:42px;padding:6px 8px;gap:6px;border-radius:9px}.editrow .name{font-size:11px}.editrow small{font-size:9px}.editrow input[type=number]{width:78px;min-height:34px;padding:5px}.rowfields{gap:5px}.rowfields label{font-size:9px}.notice{font-size:11px;line-height:1.45;padding:8px 10px;margin:8px 0}.stage{padding:8px;margin:6px 0}.subreward{padding-top:6px;margin-top:6px}
 @media(max-width:650px){header{height:50px;padding:4px 8px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.card{padding:8px}.card.action{min-height:0}.cardTitle{font-size:11px}.cardIcon{width:26px;height:26px;font-size:15px}.connection{padding:7px 8px}.connection button{padding:5px 9px}.account{padding:8px 1px 5px}.level{padding:5px 8px}.modal{max-height:94vh;max-height:94dvh;border-radius:16px 16px 0 0}.modalHead{padding:9px 12px}#modalBody{padding:3px 10px 10px}.modalFooter{padding:7px 10px}.rowfields{grid-template-columns:repeat(2,minmax(0,1fr))}.editrow input[type=number]{width:72px}.commitbar button{font-size:11px}}
 @media(min-width:1000px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* Connection summary combines game identity with the Connect control. */
+.connection{align-items:center;padding:7px 10px;gap:10px}
+.connectionInfo{flex:1;min-width:0}
+.connectionStatus{display:flex;align-items:center;min-height:20px}
+.connectionStatus .dot{flex:none}
+.connectionStats{display:grid;grid-template-columns:minmax(0,1.7fr) repeat(2,minmax(48px,.7fr));gap:6px;margin:4px 0 0 15px;max-width:390px}
+.connectionStats>span{min-width:0;display:flex;flex-direction:column;gap:1px}
+.connectionStats small{display:block!important;margin:0!important;font-size:8px!important;line-height:1.1;letter-spacing:.45px;text-transform:uppercase;color:var(--muted)}
+.connectionStats b{font-size:11px;line-height:1.15;font-weight:700;overflow-wrap:anywhere}
+#cityId{font-size:10px}
+@media(max-width:390px){.connection{gap:6px;padding:7px 8px}.connectionStats{grid-template-columns:minmax(0,1.4fr) repeat(2,minmax(42px,.65fr));gap:4px;margin-left:14px}.connectionStats b{font-size:10px}#cityId{font-size:9px}.connection button{padding:5px 8px}}
