@@ -1353,6 +1353,10 @@ FRIEND_GROUPS = (
     "FollowedFriends",
     "Followers",
     "RandomFriends",
+    "LastRandomFriends",
+    "LastHelpFriends",
+    "LastHelp",
+    "LastHelpers",
     "ClanMembers",
     "NewFriends",
 )

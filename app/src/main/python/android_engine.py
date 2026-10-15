@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime
 import township_core as B
 import desktop_logic as D
-ROOT=None; CONFIG={}; CONNECTED=False; REVISION=0; BASELINE=None; UNDO=[]; LOGS=[]; EVENT=None; SU=None
+ROOT=None; PROFILE_CACHE=None; CONFIG={}; CONNECTED=False; REVISION=0; BASELINE=None; UNDO=[]; LOGS=[]; EVENT=None; SU=None
 CANCEL=threading.Event()
 def log(text,level='info'):
  r={'time':datetime.now().strftime('%H:%M:%S'),'level':level,'text':str(text)};LOGS.append(r);del LOGS[:-1000]
@@ -60,11 +60,44 @@ def identities(game,local):
 def validate_pair(g,l):
  gx,lx=B.decode_save(g),B.decode_save(l);B.validate_xml_document(gx,'mGameInfo');B.validate_xml_document(lx,'LocalInfo');return gx,lx
 def commit_pair(g,l):
- global CONNECTED,BASELINE,REVISION,UNDO
+ global CONNECTED,BASELINE,REVISION,UNDO,PROFILE_CACHE
  gx,lx=validate_pair(g,l);s=B.SESSION
  s.original_container=g;s.original_xml=gx;s.current_xml=gx;s.localinfo_container=l;s.localinfo_xml=lx
  s.localinfo_meta,s.friends=B.parse_localinfo_metadata(lx);s.pending_localinfo_xml=None;s.pending_pair_templates=None;s.source_label=B.PACKAGE_NAME
- CONNECTED=True;BASELINE=tuple(map(digest,(g,l)));REVISION+=1;UNDO=[]
+ CONNECTED=True;BASELINE=tuple(map(digest,(g,l)));REVISION+=1;UNDO=[];PROFILE_CACHE=ROOT/'profile_cache.json'
+FRIEND_CATEGORIES=('ProfilesCache','FollowedFriends','RandomFriends','LastRandomFriends','LastHelpFriends','LastHelp','LastHelpers','ClanMembers','Followers','NewFriends')
+def _cache_read():
+ try:
+  data=json.loads(PROFILE_CACHE.read_text(encoding='utf-8'))
+  rows=data.get('profiles',[]) if isinstance(data,dict) else data
+  return {str(r.get('city_id') or r.get('id')):dict(r) for r in rows if isinstance(r,dict) and re.fullmatch(r'[A-Za-z0-9_-]{3,64}',str(r.get('city_id') or r.get('id') or ''))}
+ except (OSError,ValueError,TypeError):return {}
+def _cache_profile(city_id,donor,profile=None):
+ cache=_cache_read();old=cache.get(city_id,{})
+ name=(profile.city_name if profile else '') or old.get('city_name','')
+ level=max(profile.level if profile else 0,int(old.get('level',0) or 0))
+ try: extracted,_,_=B.extract_city_level(donor);level=extracted or level
+ except Exception:pass
+ groups=list(dict.fromkeys((old.get('groups') or [])+['ProfilesCache']+(profile.groups if profile else [])))
+ row=dict(old,city_id=city_id,city_name=name,level=level,groups=groups,source='TS Studio FetchCity',updated_at=datetime.now().isoformat(timespec='seconds'))
+ if profile:
+  for key in ('xp','likes','fver','lang','pic','fetched_city_ver'):
+   value=getattr(profile,key,None)
+   if value not in (None,'',0):row[key]=value
+ cache[city_id]=row
+ B.atomic_write(PROFILE_CACHE,json.dumps({'schema':1,'source':'TS Studio','profiles':list(cache.values())},ensure_ascii=False,indent=2).encode('utf-8'))
+ return row
+def _friend_rows():
+ cache=_cache_read();local=B.SESSION.friends or {};merged={}
+ for cid,p in local.items():merged[cid]=dict(id=cid,name=p.city_name,level=p.level,groups=list(p.groups or []))
+ for cid,r in cache.items():
+  x=merged.setdefault(cid,dict(id=cid,name='',level=0,groups=[]))
+  x['name']=x['name'] or r.get('city_name','');x['level']=max(int(x['level'] or 0),int(r.get('level',0) or 0))
+  x['groups']=list(dict.fromkeys(x['groups']+(r.get('groups') or [])+(['ProfilesCache'] if r else [])))
+ rows=sorted(merged.values(),key=lambda x:(x['name'].lower(),x['id']))
+ counts={'All':len(rows)}
+ for category in FRIEND_CATEGORIES:counts[category]=sum(category in r['groups'] for r in rows)
+ return rows,counts
 def require():
  if not CONNECTED:raise B.SaveToolError('Connect first')
 def snapshot():
@@ -219,8 +252,10 @@ def describe(kind):
      if f'productId_{wagon}' in data or f'productCount_{wagon}' in data:rows.append(row(f'{scope}:{train}:{wagon}',f'Train {train} · Wagon {wagon}',group=g['path'],fields=[dict(id=k,value=data.get(f'cardPack{wagon}' if k=='cardPack' else f'{k}_{wagon}','' if k in ('productId','cardPack') else 0),type='text' if k in ('productId','cardPack') else 'number') for k in ('productId','productCount','orderBlue','orderBlueTime','cardPack','productDone')]))
   if not rows:raise B.SaveToolError('No supported wagon data. Wait for a train to return in Township, exit game, then reconnect.')
   return dict(mode='train',rows=rows)
- elif kind in ('clone1','clone3'):return dict(mode='clone',choices=D.DESIGN_LABELS,friends=[dict(id=v.city_id,name=v.city_name,level=v.level) for v in (B.SESSION.friends or {}).values()],defaults={k:v for k,v in (B.SESSION.localinfo_meta or {}).items() if k in ('version','fver')})
- elif kind=='send':return dict(mode='send',defaults=B.send_card_defaults(xml,B.SESSION.pending_localinfo_xml or B.SESSION.localinfo_xml),friends=[dict(id=v.city_id,name=v.city_name) for v in (B.SESSION.friends or {}).values()])
+ elif kind in ('clone1','clone3'):
+  friends,counts=_friend_rows();return dict(mode='clone',choices=D.DESIGN_LABELS,friends=friends,friendCounts=counts,defaults={k:v for k,v in (B.SESSION.localinfo_meta or {}).items() if k in ('version','fver')})
+ elif kind=='send':
+  friends,counts=_friend_rows();return dict(mode='send',defaults=B.send_card_defaults(xml,B.SESSION.pending_localinfo_xml or B.SESSION.localinfo_xml),friends=friends,friendCounts=counts)
  else:raise ValueError('Unknown editor')
  return dict(mode='values',rows=rows)
 def edit(kind,args):
@@ -276,7 +311,46 @@ def donor(args):
  city=args.get('city','').strip();m=B.SESSION.localinfo_meta or {};bv=args.get('bver') or m.get('version','');fv=args.get('fver') or m.get('fver','')
  if not re.fullmatch(r'[A-Za-z0-9_-]{3,64}',city):raise ValueError('Choose donor XML/ZIP or a valid City ID')
  if not re.fullmatch(r'\d+(?:\.\d+){1,3}',bv) or not re.fullmatch(r'\d+',fv):raise ValueError('Valid bver/fver from LocalInfo required')
- log('Fetching donor city…');return B.fetch_city_live(city,bv,fv,out_dir=B.FRIENDS_DIR/city)[0]
+ log('Fetching donor city…');donor_xml=B.fetch_city_live(city,bv,fv,out_dir=B.FRIENDS_DIR/city)[0]
+ _cache_profile(city,donor_xml,(B.SESSION.friends or {}).get(city));log('Profile saved to TS Studio Profile Cache.')
+ return donor_xml
+def build_profile_cache(args):
+ require();maximum=max(1,min(500,int(args.get('maximum',100))));max_depth=max(1,min(3,int(args.get('depth',2))));delay=max(0.0,min(10.0,float(args.get('delay',0.5))))
+ meta=B.SESSION.localinfo_meta or {};bv=meta.get('version','');fv=meta.get('fver','')
+ if not bv or not fv:raise B.SaveToolError('LocalInfo is missing bver/fver')
+ seeds=B.SESSION.friends or {};queue=[];seen=set();own=meta.get('own_city_id','')
+ for p in seeds.values():
+  if p.city_id and p.city_id!=own and p.city_id not in seen:seen.add(p.city_id);queue.append((p.city_id,1))
+ cache=_cache_read();added=0;failed=0;CANCEL.clear()
+ log(f'Building Profile Cache · {len(queue)} LocalInfo friends · target {maximum} · depth {max_depth}.')
+ while queue and added+failed<maximum:
+  if CANCEL.is_set():log('Profile Cache build stopped at a safe boundary.','warning');break
+  city,depth=queue.pop(0)
+  if city in cache:
+   # Reuse the donor already saved by TS Studio to continue breadth-first scans
+   # without making another network request for the same city.
+   donor_path=B.FRIENDS_DIR/city/'friend_city.xml'
+   if depth<max_depth and donor_path.is_file():
+    try:
+     for related,relation,evidence in B.extract_related_city_ids(donor_path.read_bytes()):
+      if related!=own and related not in seen:seen.add(related);queue.append((related,depth+1))
+    except Exception as exc:log(f'Could not expand cached city {city}: {exc}','warning')
+   continue
+  if depth>max_depth:continue
+  profile=seeds.get(city);city_ver=profile.fetched_city_ver if profile else 0
+  try:
+   donor_xml,_,_=B.fetch_city_live(city,bv,fv,city_ver,out_dir=B.FRIENDS_DIR/city)
+   _cache_profile(city,donor_xml,profile);cache=_cache_read();added+=1
+   if depth<max_depth:
+    for related,relation,evidence in B.extract_related_city_ids(donor_xml):
+     if related!=own and related not in seen:seen.add(related);queue.append((related,depth+1))
+   log(f'Profile Cache +{added}/{maximum} · {city} · depth {depth}.')
+  except Exception as exc:
+   failed+=1;log(f'FetchCity skipped for {city}: {exc}','warning')
+  if delay and queue and CANCEL.wait(delay):log('Profile Cache build stopped at a safe boundary.','warning');break
+ rows,counts=_friend_rows()
+ log(f'Profile Cache complete · {len(cache)} stored · {added} added · {failed} failed.')
+ return dict(total=len(cache),added=added,failed=failed,counts=counts)
 def clone(kind,args):
  source=donor(args);s=B.SESSION;note=D.gui_design_version_check(s.current_xml,source)
  if note:log(note,'warning')
@@ -335,6 +409,7 @@ def request(action,payload='{}'):
    (edit if action=='edit' else clone)(args['kind'],args);result=state()
   elif action=='donor_preview':
    require();source=donor(args);available,reasons=D.gui_design_availability(source,B.SESSION.current_xml);result=dict(account=D.gui_design_metadata(source),available=available,reasons=reasons)
+  elif action=='build_profile_cache':result=build_profile_cache(args)
   elif action=='apply':
    require();write_pair(encoded_pair(),BASELINE)
    if CONFIG['launch']:launch_after_commit()

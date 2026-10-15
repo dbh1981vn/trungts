@@ -38,6 +38,18 @@ class Editors(unittest.TestCase):
  @classmethod
  def setUpClass(cls):cls.pair=fixture()
  def setUp(self):self.tmp=tempfile.TemporaryDirectory();E.initialize(self.tmp.name);E.commit_pair(*self.pair)
+ def test_android_profile_cache_groups_and_counts(self):
+  B.SESSION.friends={'follow1':B.FriendProfile(city_id='follow1',city_name='Follower',groups=['FollowedFriends']),'random1':B.FriendProfile(city_id='random1',city_name='Recent',groups=['LastRandomFriends'])}
+  E.durable(E.PROFILE_CACHE,json.dumps({'schema':1,'source':'TS Studio','profiles':[{'city_id':'random1','city_name':'Recent','level':42,'groups':['ProfilesCache','LastRandomFriends']},{'city_id':'cache1','city_name':'Cached','level':18,'groups':['ProfilesCache']}]}).encode())
+  rows,counts=E._friend_rows();self.assertEqual(counts['All'],3);self.assertEqual(counts['ProfilesCache'],2);self.assertEqual(counts['FollowedFriends'],1);self.assertEqual(counts['LastRandomFriends'],1)
+  cached=next(r for r in rows if r['id']=='cache1');self.assertIn('ProfilesCache',cached['groups']);self.assertEqual(cached['level'],18)
+ def test_build_profile_cache_saves_successful_fetches(self):
+  B.SESSION.friends={'cachedid':B.FriendProfile(city_id='cachedid',city_name='Test City',level=27,groups=['FollowedFriends'])}
+  original=B.fetch_city_live;B.fetch_city_live=lambda *a,**k:(b'<mGameInfo/>',{},0)
+  try:result=E.build_profile_cache({'maximum':1,'depth':1,'delay':0})
+  finally:B.fetch_city_live=original
+  self.assertEqual(result['added'],1);self.assertEqual(result['total'],1)
+  row=E._cache_read()['cachedid'];self.assertIn('ProfilesCache',row['groups']);self.assertIn('FollowedFriends',row['groups'])
  def tearDown(self):self.tmp.cleanup()
  def test_all_editor_descriptions(self):
   for k in KINDS:
