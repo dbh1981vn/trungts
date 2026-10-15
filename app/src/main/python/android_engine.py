@@ -48,20 +48,37 @@ def launch_game():
 def launch_after_commit():
  try:launch_game()
  except Exception as err:log('Both XML files were written and verified, but Township could not be launched automatically: '+str(err),'warning')
-def read_remote(path):
- size=int(root_shell('stat -c %s '+q(path)).strip())
- if not 0<size<=B.MAX_CONTAINER_SIZE:raise B.SaveToolError('Save size outside supported range')
- return root_shell('cat '+q(path))
-def read_pair():return read_remote(B.REMOTE_SAVE),read_remote(B.REMOTE_LOCALINFO)
+def read_remote_many(paths):
+ """Read several root-owned files in one su process, with length framing."""
+ paths=list(paths)
+ if not paths:return []
+ command='set -e\n'
+ for path in paths:
+  quoted=q(path)
+  command+='size=$(stat -c %s '+quoted+')\nprintf "%s\\n" "$size"\ncat '+quoted+'\n'
+ raw=root_shell(command,timeout=90);out=[];offset=0
+ for _ in paths:
+  end=raw.find(b'\n',offset)
+  if end<0:raise B.SaveToolError('Root read returned an incomplete size header')
+  try:size=int(raw[offset:end])
+  except ValueError:raise B.SaveToolError('Root read returned an invalid size header')
+  if not 0<size<=B.MAX_CONTAINER_SIZE:raise B.SaveToolError('Save size outside supported range')
+  offset=end+1;finish=offset+size
+  if finish>len(raw):raise B.SaveToolError('Root read returned a truncated save file')
+  out.append(raw[offset:finish]);offset=finish
+ if offset!=len(raw):raise B.SaveToolError('Root read returned unexpected trailing data')
+ return out
+def read_remote(path):return read_remote_many([path])[0]
+def read_pair():return tuple(read_remote_many((B.REMOTE_SAVE,B.REMOTE_LOCALINFO)))
 def digest(data):return hashlib.sha256(data).hexdigest()
 def identities(game,local):
  m,_=B.parse_localinfo_metadata(local)
  return (B._clone_field_value(game,'cityId'),B._clone_field_value(game,'gameId'),m.get('own_city_id'),m.get('game_id'),m.get('token'))
 def validate_pair(g,l):
  gx,lx=B.decode_save(g),B.decode_save(l);B.validate_xml_document(gx,'mGameInfo');B.validate_xml_document(lx,'LocalInfo');return gx,lx
-def commit_pair(g,l):
+def commit_pair(g,l,validated=None):
  global CONNECTED,BASELINE,REVISION,UNDO,PROFILE_CACHE
- gx,lx=validate_pair(g,l);s=B.SESSION
+ gx,lx=validated or validate_pair(g,l);s=B.SESSION
  s.original_container=g;s.original_xml=gx;s.current_xml=gx;s.localinfo_container=l;s.localinfo_xml=lx
  s.localinfo_meta,s.friends=B.parse_localinfo_metadata(lx);s.pending_localinfo_xml=None;s.pending_pair_templates=None;s.source_label=B.PACKAGE_NAME
  CONNECTED=True;BASELINE=tuple(map(digest,(g,l)));REVISION+=1;UNDO=[];PROFILE_CACHE=ROOT/'profile_cache.json'
@@ -128,15 +145,22 @@ def durable(path,data):
  fd=os.open(str(path.parent),os.O_RDONLY)
  try:os.fsync(fd)
  finally:os.close(fd)
-def prepare_remote(local,remote,temp):
- root_shell('set -e\ncp -p '+q(remote)+' '+q(temp)+'\ncat '+q(local)+' > '+q(temp)+'\nctx=$(ls -Zd '+q(remote)+" | awk '{print $1}')\ncase \"$ctx\" in u:*) chcon \"$ctx\" "+q(temp)+';; esac\n')
- if read_remote(temp)!=Path(local).read_bytes():raise B.SaveToolError('Staging readback failed')
+def prepare_remote_many(rows):
+ """Stage and verify multiple files with one root-shell round trip."""
+ command='set -e\n'
+ for local,remote,temp in rows:
+  command+='cp -p '+q(remote)+' '+q(temp)+'\ncat '+q(local)+' > '+q(temp)+'\nctx=$(ls -Zd '+q(remote)+" | awk '{print $1}')\ncase \"$ctx\" in u:*) chcon \"$ctx\" "+q(temp)+';; esac\n'
+ root_shell(command,timeout=90)
+ expected=[Path(local).read_bytes() for local,_,_ in rows]
+ if read_remote_many([temp for _,_,temp in rows])!=expected:raise B.SaveToolError('Staging readback failed')
+def prepare_remote(local,remote,temp):prepare_remote_many([(local,remote,temp)])
 def rollback_journal(path):
  j=json.loads(path.read_text());set_package(j['package']);stop_game()
- for row in j['files']:
-  temp=row['remote']+'.tsrestore';prepare_remote(row['backup'],row['remote'],temp);root_shell('mv -f '+q(temp)+' '+q(row['remote']))
-  if read_remote(row['remote'])!=Path(row['backup']).read_bytes():raise B.SaveToolError('Rollback verification failed')
- root_shell('sync');path.rename(path.with_suffix('.recovered'));log('Interrupted write recovered; Township remains stopped.','warning')
+ rows=j['files'];staged=[(row['backup'],row['remote'],row['remote']+'.tsrestore') for row in rows]
+ prepare_remote_many(staged)
+ root_shell('set -e\n'+'\n'.join('mv -f '+q(temp)+' '+q(remote) for _,remote,temp in staged)+'\nsync')
+ if read_remote_many([row['remote'] for row in rows])!=[Path(row['backup']).read_bytes() for row in rows]:raise B.SaveToolError('Rollback verification failed')
+ path.rename(path.with_suffix('.recovered'));log('Interrupted write recovered; Township remains stopped.','warning')
 def recover():
  for p in sorted((ROOT/'transactions').glob('*/pending.json')):rollback_journal(p)
  set_package(CONFIG['package'])
@@ -144,30 +168,32 @@ def write_pair(pair,expected=None):
  global CONNECTED
  stop_game();live=read_pair()
  if expected is not None and tuple(map(digest,live))!=expected:raise B.SaveToolError('Game saves changed since Connect. Reconnect before applying; staged changes are retained.')
- validate_pair(*pair);backup_pair(live,'before Android Apply');folder=ROOT/'transactions'/uuid.uuid4().hex;folder.mkdir();rows=[]
+ validated=validate_pair(*pair);backup_pair(live,'before Android Apply');folder=ROOT/'transactions'/uuid.uuid4().hex;folder.mkdir();rows=[]
+ bak_paths=[remote+'.bak' for remote in (B.REMOTE_SAVE,B.REMOTE_LOCALINFO)]
+ present=root_shell('set -e\n'+'\n'.join('if [ -f '+q(path)+' ]; then echo yes; else echo no; fi' for path in bak_paths)).decode().splitlines()
+ existing_baks=[path for path,exists in zip(bak_paths,present) if exists=='yes']
+ bak_data=dict(zip(existing_baks,read_remote_many(existing_baks))) if existing_baks else {}
  for i,(remote,old,new) in enumerate(zip((B.REMOTE_SAVE,B.REMOTE_LOCALINFO),live,pair)):
   for suffix in ('','.bak'):
    target=remote+suffix
-   if suffix and not root_shell('if [ -f '+q(target)+' ]; then echo yes; fi').strip():continue
-   backup=folder/f'{i}{suffix}.original';output=folder/f'{i}{suffix}.new';durable(backup,old if not suffix else read_remote(target));durable(output,new)
+   if suffix and target not in bak_data:continue
+   backup=folder/f'{i}{suffix}.original';output=folder/f'{i}{suffix}.new';durable(backup,old if not suffix else bak_data[target]);durable(output,new)
    rows.append({'remote':target,'backup':str(backup),'output':str(output),'staged':target+'.tsstudio-'+folder.name})
  journal=folder/'pending.json';durable(journal,json.dumps({'package':B.PACKAGE_NAME,'files':rows}).encode())
  try:
-  for r in rows:prepare_remote(r['output'],r['remote'],r['staged'])
-  for r in rows:root_shell('mv -f '+q(r['staged'])+' '+q(r['remote']))
-  root_shell('sync')
-  for r in rows:
-   if read_remote(r['remote'])!=Path(r['output']).read_bytes():raise B.SaveToolError('Write verification failed')
+  prepare_remote_many([(r['output'],r['remote'],r['staged']) for r in rows])
+  root_shell('set -e\n'+'\n'.join('mv -f '+q(r['staged'])+' '+q(r['remote']) for r in rows)+'\nsync')
+  if read_remote_many([r['remote'] for r in rows])!=[Path(r['output']).read_bytes() for r in rows]:raise B.SaveToolError('Write verification failed')
   journal.rename(folder/'complete.json')
  except Exception:
   try:rollback_journal(journal)
   except Exception as err:CONNECTED=False;log('Recovery incomplete. Do not launch Township. Connect to recover: '+str(err),'error')
   raise
  finally:
-  for r in rows:
-   try:root_shell('rm -f '+q(r['staged']))
+  if rows:
+   try:root_shell('rm -f '+' '.join(q(r['staged']) for r in rows))
    except Exception:pass
- commit_pair(*pair);log('Both saves written and verified. Check the results inside Township.')
+ commit_pair(*pair,validated=validated);log('Both saves written and verified. Check the results inside Township.')
 def safe_input(path):
  p=Path(path).resolve()
  if not p.is_relative_to(ROOT) or not p.is_file():raise ValueError('Choose a file using Browse')
@@ -186,7 +212,12 @@ def profile_rows():
 def state():
  data=dict(connected=CONNECTED,revision=REVISION,settings=CONFIG,themes=D.THEMES,languages=D.LANGUAGES)
  if CONNECTED:
-  s=B.SESSION;data.update(changed=s.changed or s.pending_localinfo_xml is not None,account=B.backup_account_info(s.current_xml,s.pending_localinfo_xml or s.localinfo_xml),profile=profile_rows())
+  s=B.SESSION;local=s.pending_localinfo_xml or s.localinfo_xml
+  if s.pending_localinfo_xml is not None:account=B.backup_account_info(s.current_xml,local)
+  else:
+   meta=s.localinfo_meta or {};push=B._clone_tag_attrs(local,'PushNotifDeviceInfo')
+   account={'city_id':meta.get('own_city_id') or B._clone_field_value(s.current_xml,'cityId','UnknownID'),'name':push.get('pname') or B._clone_field_value(s.current_xml,'townName','GuestUser'),'level':B._clone_field_value(s.current_xml,'levelup','0'),'version':meta.get('version',''),'fver':meta.get('fver','')}
+  data.update(changed=s.changed or s.pending_localinfo_xml is not None,account=account,profile=profile_rows())
  return data
 def row(id,label=None,value=0,group='',**kw):return dict(id=str(id),label=str(label or id),value=value,group=group,**kw)
 def describe(kind):

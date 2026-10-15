@@ -1,12 +1,23 @@
-Bản vá mở rộng catalog XML cho project TS Studio Android.
+TS Studio Android — Patch tăng tốc và tinh gọn nút thao tác
 
-Giải nén vào thư mục gốc repository Android và cho phép ghi đè file cùng đường dẫn. Sau đó commit/push lên GitHub và chạy workflow Build TS Studio APK.
+Áp dụng
+1. Tải file ZIP patch và giải nén vào thư mục gốc repository TSStudioAndroid hiện có.
+2. Cho phép ghi đè các file cùng đường dẫn.
+3. Commit và push lên nhánh main trên GitHub.
+4. Mở Actions, chờ workflow Build TS Studio APK hoàn tất.
+5. Tải artifact TS-Studio-2.0-Android và cài APK trên thiết bị/giả lập đã root.
 
-Nội dung chính:
-- 19 Skin ID bổ sung từ skins.xml; tên bị cắt cụt và mục Default được bỏ qua.
-- 24 ID Profile bổ sung từ DataVarCatalog.
-- 29 Decoration ID và 40 cấu trúc FragmentedBeauty bổ sung từ XML; 2 city sign bổ sung từ BuildingsStash. Không đưa LandscapesIcon/dalesIcon/roadsIcon vì đây là marker giao diện.
-- Giữ thay đổi Set Selected Decoration tối đa 100.
-- Bổ sung kiểm thử regression và cập nhật tools/extract_engine.py để lần trích xuất tiếp theo giữ lại các catalog này.
+Thay đổi trong patch
+- Đọc mGameInfo.xml và LocalInfo.xml chung trong một root-shell, có kiểm tra kích thước và độ dài dữ liệu.
+- Gộp stage, readback, ghi, sync, xác minh và dọn file tạm để giảm số lần khởi chạy root-shell.
+- Giữ backup, kiểm tra save không đổi từ lúc Connect, xác minh sau ghi và rollback khi ghi lỗi.
+- Tái sử dụng metadata LocalInfo khi dựng trạng thái giao diện; tránh phân tích lại danh sách friend sau mỗi thao tác.
+- Đổi nút trên thẻ tính năng từ Open thành Apply; nút ghi vào file game hiển thị Write to game.
+- Land, Museum, All Card, My Card và Golden Pass áp dụng ngay vào bản XML đang chỉnh sửa, không mở popup xác nhận.
+- Giữ các tính năng Android có sẵn trong patch trước, gồm Profile Cache, phân nhóm Friend và catalog XML bổ sung.
 
-Các thay đổi áp dụng cho mã nguồn Android. Không sửa chương trình Python desktop gốc và không thay đổi trực tiếp file save XML của thành phố.
+Các mục Apply vẫn chỉ sửa bản nháp trong ứng dụng. Nhấn Write to game để sao lưu và ghi hai file vào Township.
+
+Đã chạy: 27 kiểm thử Python và kiểm tra cú pháp JavaScript/Python.
+Kiểm thử giao diện Playwright chưa chạy trong môi trường đóng gói này vì chưa có Playwright/browser.
+APK chưa được build tại đây; GitHub Actions sẽ build APK sau khi bạn push patch.

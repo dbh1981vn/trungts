@@ -57,6 +57,11 @@ class Editors(unittest.TestCase):
  def test_connect_gate_and_stale_revision(self):
   before=E.snapshot();r=json.loads(E.request('edit',json.dumps({'kind':'land','revision':-1})));self.assertFalse(r['ok']);self.assertEqual(before,E.snapshot())
   E.CONNECTED=False;self.assertRaises(B.SaveToolError,E.describe,'barn')
+ def test_state_reuses_connected_account_metadata(self):
+  expected=B.backup_account_info(B.SESSION.current_xml,B.SESSION.localinfo_xml);original=B.backup_account_info
+  B.backup_account_info=lambda *a:(_ for _ in ()).throw(AssertionError('state reparsed cached LocalInfo'))
+  try:self.assertEqual(E.state()['account'],expected)
+  finally:B.backup_account_info=original
  def test_codec_modes_and_invalid_xml(self):
   xml='<root><Global><Var name="townName" v="Thành phố 🌷"/></Global></root>'.encode()
   for compress in (True,False):
@@ -130,15 +135,24 @@ class Transport(unittest.TestCase):
  def tearDown(self):E.root_shell,E.stop_game,B.REMOTE_SAVE,B.REMOTE_LOCALINFO,E.set_package=self.saved;self.tmp.cleanup()
  def test_write_pair_readback(self):
   E.edit('profile_stats',{'values':{'coin':12345}});pair=E.encoded_pair();E.write_pair(pair,E.BASELINE);self.assertEqual(E.read_pair(),pair);self.assertEqual(Path(B.REMOTE_SAVE+'.bak').read_bytes(),pair[0])
+ def test_read_pair_uses_one_root_process(self):
+  original=E.root_shell;calls=[]
+  def counted(command,timeout=45):calls.append(command);return original(command,timeout)
+  E.root_shell=counted
+  try:self.assertEqual(E.read_pair(),self.pair)
+  finally:E.root_shell=original
+  self.assertEqual(len(calls),1)
  def test_stale_device_guard(self):
   Path(B.REMOTE_SAVE).write_bytes(self.pair[0]+b'changed');self.assertRaises(B.SaveToolError,E.write_pair,self.pair,E.BASELINE);self.assertTrue(Path(B.REMOTE_SAVE).read_bytes().endswith(b'changed'))
  def test_partial_failure_rollback(self):
   E.edit('profile_stats',{'values':{'level':2}});pair=E.encoded_pair();original=E.root_shell;count=0
   def fail(command,timeout=45):
    nonlocal count
-   if command.startswith('mv -f ') and '.tsstudio-' in command:
+   if 'mv -f ' in command and '.tsstudio-' in command and '.tsrestore' not in command and count==0:
     count+=1
-    if count==3:raise B.SaveToolError('Injected write failure')
+    first=next(line for line in command.splitlines() if line.startswith('mv -f ') and '.tsstudio-' in line)
+    original(first,timeout)
+    raise B.SaveToolError('Injected partial write failure')
    return original(command,timeout)
   E.root_shell=fail;self.assertRaises(B.SaveToolError,E.write_pair,pair,E.BASELINE);self.assertEqual(E.read_pair(),self.pair);self.assertEqual(Path(B.REMOTE_SAVE+'.bak').read_bytes(),self.pair[0]);self.assertFalse(list((E.ROOT/'transactions').glob('*/pending.json')))
 if __name__=='__main__':unittest.main()
